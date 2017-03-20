@@ -27,6 +27,7 @@
 */
 
 #include <dlib/dnn.h>
+#include <dlib/clustering.h>
 #include <dlib/image_io.h>
 #include <dlib/misc_api.h>
 #include <boost/property_tree/ptree.hpp>
@@ -97,18 +98,6 @@ std::vector<std::vector<string>> load_objects_list (
         objects.push_back(imgs);
       }
     }
-    /*
-    std::vector<std::vector<string>> objects;
-    for (auto subdir : directory(dir).get_dirs())
-    {
-        std::vector<string> imgs;
-        for (auto img : subdir.get_files())
-            imgs.push_back(img);
-
-        if (imgs.size() != 0)
-            objects.push_back(imgs);
-    }
-    */
     return objects;
 }
 
@@ -283,7 +272,7 @@ int main(int argc, char** argv)
         {
             try
             {
-                load_mini_batch(5, 5, rnd, objs, images, labels);
+                load_mini_batch(15, 3, rnd, objs, images, labels);
                 qimages.enqueue(images);
                 qlabels.enqueue(labels);
             }
@@ -336,7 +325,8 @@ int main(int argc, char** argv)
     // Now, just to show an example of how you would use the network, let's check how well
     // it performs on the training data.
     dlib::rand rnd(time(0));
-    load_mini_batch(5, 5, rnd, objs, images, labels);
+    load_mini_batch(30, 3, rnd, objs, images, labels);
+    cout << "Loaded test mini batch" << endl;
 
     // Normally you would use the non-batch-normalized version of the network to do
     // testing, which is what we do here.
@@ -344,12 +334,28 @@ int main(int argc, char** argv)
 
     // Run all the images through the network to get their vector embeddings.
     std::vector<matrix<float,0,1>> embedded = testing_net(images);
+    cout << "Testing complete, now deducing performance.." << endl;
 
     // Now, check if the embedding puts images with the same labels near each other and
     // images with different labels far apart.
     int num_right = 0;
     int num_wrong = 0;
     cout << "Size of test image set: " << embedded.size() << endl;
+
+    std::vector<sample_pair> edges;
+    for (size_t i = 0; i < embedded.size(); ++i) {
+      for (size_t j = i + 1; j < embedded.size(); ++j) {
+        if (length(embedded[i] - embedded[j]) < testing_net.loss_details().get_distance_threshold())
+          edges.push_back(sample_pair(i, j));
+      }
+    }
+
+    std::vector<unsigned long> output_labels;
+    const auto num_clusters = chinese_whispers(edges, output_labels);
+    cout << "Number of people found in the images: " << num_clusters << endl;
+
+    //for (size_t cluster_id = 0; cluster_id < num_clusters; ++cluster_id)
+
     for (size_t i = 0; i < embedded.size(); ++i)
     {
         for (size_t j = i+1; j < embedded.size(); ++j)
